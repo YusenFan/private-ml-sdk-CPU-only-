@@ -1,28 +1,36 @@
-# Private ML SDK
+# Private ML SDK (CPU-Only)
 
-A secure and verifiable solution for running Large Language Models (LLMs) in Trusted Execution Environments (TEEs), leveraging NVIDIA GPU TEE and Intel TDX technologies.
-
-![Architecture Overview](./assets/image/gpu-tee.webp)
+A secure and verifiable solution for running Large Language Models (LLMs) in Trusted Execution Environments (TEEs), leveraging Intel TDX CPU attestation technology.
 
 ## Overview
 
-Private ML SDK provides a secure environment for running LLM workloads with guaranteed privacy and security, preventing unauthorized access to both the model and user data during inference operations. The solution leverages NVIDIA's TEE GPU technology (H100/H200/B100) and Intel CPUs with TDX support to ensure that AI model execution and data processing remain fully protected within secure enclaves.
+Private ML SDK (CPU-Only) provides a secure environment for running LLM workloads with guaranteed privacy and security, preventing unauthorized access to both the model and user data during inference operations. This CPU-only version uses Intel TDX (Trust Domain Extensions) to ensure that AI model execution and data processing remain fully protected within secure CPU enclaves.
 
 Key features:
+- **CPU-based attestation** using Intel TDX
 - Tamper-proof data processing
 - Secure execution environment
 - Open source and reproducible builds
-- Verifiable execution results
-- Nearly native speed performance (up to 99% efficiency)
+- Verifiable execution results via remote attestation
+- No GPU dependency - works with CPU-only infrastructure
 
 ## Architecture
 
 The system consists of several core components:
 
-- **Secure Compute Environment**: TEE-based execution environment
-- **Remote Attestation**: Verification of the TEE environment
+- **Secure Compute Environment**: Intel TDX-based execution environment (CPU TEE)
+- **Remote Attestation**: Verification of the Intel TDX environment using CPU quotes
 - **Secure Communication**: End-to-end encryption between users and LLM
 - **Key Management Service (KMS)**: Key management service to manage keys for encryption and decryption
+
+### CPU-Only Attestation Flow
+
+1. **Quote Generation**: The service running in Intel TDX generates a cryptographic quote that includes measurement of the running code
+2. **Quote Verification**: Clients can verify the quote using:
+   - Intel DCAP Quote Verification Library (dcap-qvl)
+   - On-chain verification via smart contracts (e.g., Automata)
+   - Remote attestation services
+3. **Signature Verification**: All responses are signed by keys bound to the attested environment
 
 ## Getting Started
 
@@ -74,7 +82,7 @@ cd private-ml-sdk/meta-dstack-nvidia/dstack/key-provider-build/
 
 #### Using the dstack.py script (Deprecated)
 
-This requires a TDX host machine with the TDX driver installed and Nvidia GPU what support GPU TEE installed.
+This requires a TDX host machine with the TDX driver installed. GPU support is not required for this CPU-only version.
 
 ```
 # Add the scripts/bin directory to the PATH environment variable
@@ -82,54 +90,31 @@ pushd private-ml-sdk/meta-dstack-nvidia/scripts/bin
 PATH=$PATH:`pwd`
 popd
 
-# List the Available GPUs
-dstack lsgpu
-
-# Output like the following:
-# Available GPU IDs:
-# ID      Description
-# 18:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# 2a:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# 3a:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# 5d:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# 9a:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# ab:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# ba:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-# db:00.0 3D controller: NVIDIA Corporation GH100 [H200 SXM 141GB] (rev a1)
-
-# Choose one or more GPU IDs and run the following command to create a CVM instance
-dstack new app.yaml -o my-gpu-cvm \
+# Create a CPU-only CVM instance (no GPU required)
+dstack new app.yaml -o my-cpu-cvm \
     --local-key-provider \
-    --gpu 18:00.0 \
     --image images/dstack-nvidia-dev-0.5.3 \
-    -c 2 -m 4G -d 100G \
+    -c 4 -m 8G -d 100G \
     --port tcp:127.0.0.1:10022:22 \
     --port tcp:0.0.0.0:8888:8888
 
 # Run the CVM:
-sudo -E dstack run my-gpu-cvm
+sudo -E dstack run my-cpu-cvm
 ```
 
 An example of the `app.yaml` file is as follows:
 
 ```yaml
-# app.yaml
+# app.yaml - CPU-only configuration
 services:
   jupyter:
-    image: kvin/cuda-notebook
+    image: jupyter/scipy-notebook
     privileged: true
     ports:
       - "8888:8888"
     volumes:
       - /var/run/tappd.sock:/var/run/tappd.sock
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    runtime: nvidia
+    # No GPU configuration needed for CPU-only attestation
 ```
 
 #### Using dstack-vmm (Recommended)
@@ -171,20 +156,19 @@ This is the recommended approach for running TDX guest images in production envi
        --output ./app-compose.json
      ```
 
-5. **Deploy a CVM (select image, GPUs, ports, KMS)**
+5. **Deploy a CPU-only CVM (select image, ports, KMS)**
    - Find the image name: `./vmm-cli.py lsimage`
-   - Find available GPUs: `./vmm-cli.py lsgpu`
-   - Deploy:
+   - Deploy (no GPU required):
      ```bash
      ./vmm-cli.py deploy \
-       --name my-gpu-cvm \
+       --name my-cpu-cvm \
        --image <exact-image-name-from-lsimage> \
        --compose ./app-compose.json \
-       --vcpu 2 --memory 4G --disk 100G \
-       --gpu <gpu-slot-or-use--ppcie> \
+       --vcpu 4 --memory 8G --disk 100G \
        --port tcp:127.0.0.1:8888:8888 \
        --kms-url https://localhost:3443
      ```
+     Note: No `--gpu` or `--ppcie` flags needed for CPU-only attestation.
      Tip: Dev image only – add `--port tcp:127.0.0.1:10022:22` to enable SSH.
 
 6. **Access and troubleshoot**
@@ -243,25 +227,17 @@ This is the recommended approach for running TDX guest images in production envi
       ./vmm-cli.py kms remove 0x<kms-pubkey>
       ```
 
-  - **GPU usage inside containers**
-    - In the CVM, your Docker Compose should request GPU with the NVIDIA runtime or device requests, for example:
+  - **CPU-only containers**
+    - In the CVM, your Docker Compose does not need GPU configuration. Example:
       ```yaml
       version: '3.8'
       services:
-        jupyter:
+        app:
           image: <your-image>
-          deploy:
-            resources:
-              reservations:
-                devices:
-                  - driver: nvidia
-                    count: all
-                    capabilities: [gpu]
-          runtime: nvidia
+          # No GPU configuration needed for CPU-only attestation
+          # All attestation is handled through Intel TDX at the CPU level
       ```
-    - At deploy time, choose GPU attachment in VMM:
-      - Use `--ppcie` to attach ALL GPUs/NVSwitches (best for full-GPU workloads), or
-      - Use `--gpu <slot>` for specific GPUs.
+    - At deploy time, no GPU flags are needed - the system uses CPU-only attestation via Intel TDX.
 
   - **Accessing your app (gateway vs local ports)**
     - If `dstack-gateway` is enabled, prefer the gateway domain rules documented in dstack to access services.
@@ -351,11 +327,14 @@ print(result.quote)
 
 ## Performance
 
-Based on benchmarks running LLMs in NVIDIA H100 and H200:
-- Efficiency approaches 99% as input size grows
-- Minimal overhead for larger models (e.g., Phi3-14B-128k and Llama3.1-70B)
-- Performance scales well with increased input sizes and model complexities
-- I/O overhead becomes negligible in high-computation scenarios
+CPU-only attestation with Intel TDX:
+- Minimal attestation overhead (quote generation takes ~100-200ms)
+- No performance impact on ML inference workloads after initial attestation
+- TEE overhead is typically <5% for compute-intensive workloads
+- Attestation can be performed once at startup and cached
+- Suitable for CPU-based ML inference with confidential computing guarantees
+
+Note: This version removes GPU TEE attestation, focusing solely on CPU-level security guarantees provided by Intel TDX. For GPU-accelerated workloads with attestation, please use the full version with NVIDIA H100/H200 GPU TEE support.
 
 ## License
 
@@ -367,5 +346,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## References
 
-- [NVIDIA Confidential Computing](https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/)
 - [Intel TDX Documentation](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-trust-domain-extensions.html)
+- [Intel DCAP Quote Verification](https://github.com/intel/SGXDataCenterAttestationPrimitives)
+- [Automata Network - On-chain Attestation](https://www.ata.network/)
+- [dstack-sdk](https://github.com/Dstack-TEE/dstack)

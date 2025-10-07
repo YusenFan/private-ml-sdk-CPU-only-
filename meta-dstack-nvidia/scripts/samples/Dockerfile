@@ -29,7 +29,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
 
 # Install Python packages
-RUN python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+RUN python3 -m pip install torch torchvision torchaudio
 RUN python3 -m pip install jupyterlab networkx six
 
 # Create a working directory

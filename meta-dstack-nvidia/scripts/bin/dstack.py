@@ -281,7 +281,7 @@ class DStackManager:
                 gpus = {
                     "attach_mode": "listed",
                     "gpus": [
-                        {"slot": gpu} for gpu in args.gpu
+                    
                     ]
                 }
             gpus = self.resolve_gpus(gpus)
@@ -361,12 +361,12 @@ class DStackManager:
     @staticmethod
     def resolve_gpus(gpus: dict) -> dict:
         """Resolve GPU slots."""
-        match gpus['attach_mode']:
-            case 'listed':
+        attach_mode = gpus['attach_mode']
+        if attach_mode == 'listed':
                 return gpus
-            case 'all':
+        elif attach_mode == 'all':
                 return DStackManager.collect_all_gpus()
-            case _:
+        else:
                 raise ValueError(
                     f"Invalid GPU attach mode: {gpus['attach_mode']}")
 

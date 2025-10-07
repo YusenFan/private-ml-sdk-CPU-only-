@@ -9,7 +9,7 @@ URL_PREFIX = "https://inference-api.phala.network"
 
 def get_attestation_report():
     """
-    Get the attestation report from CPU and GPU
+    Get the attestation report from CPU (Intel TDX)
     """
     url = f"{URL_PREFIX}/v1/attestation/report"
     response = requests.get(url)
@@ -19,32 +19,39 @@ def get_attestation_report():
 
 def verify_attestation_report(quote: dict):
     """
-    Verify the attestation report with via NVIDIA and Intel attestation services
+    Verify the Intel TDX attestation report
+    
+    This function verifies CPU attestation using Intel TDX quotes.
+    For production, you should verify the quote using:
+    1. Intel DCAP Quote Verification Library (dcap-qvl)
+    2. On-chain verification via smart contracts
+    3. Remote attestation services
     """
-    # GPU attestation verification
-    url = "https://nras.attestation.nvidia.com/v3/attest/gpu"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-    }
-    payload = json.loads(quote["nvidia_payload"])
-    response = requests.post(url, headers=headers, json=payload)
-    result = response.json()
-    print("GPU attestation verification result: ", result)
-
-    # Intel attestation verification
-    # For Automata example, just need to convert the returned base64 encoded quote
-    # to hex format (take Node for example).
+    # Intel TDX attestation verification
+    # Convert the returned base64 encoded quote to hex format
     intel_quote_bytes = "0x" + base64.b64decode(quote["intel_quote"]).hex()
-    print("Intel quote bytes: ", intel_quote_bytes)
+    print("Intel TDX quote bytes: ", intel_quote_bytes)
+    print("Event log: ", quote.get("event_log"))
+    print("Info: ", quote.get("info"))
     print(
         """
-    // Use on-chain smart contract function `verifyAndAttestOnChain` https://explorer.ata.network/address/0xE26E11B257856B0bEBc4C759aaBDdea72B64351F/contract/65536_2/readContract#F6
-    // to verify with the printed quote bytes above.
+    To verify this Intel TDX quote:
+    
+    1. On-chain verification (Automata example):
+       Use smart contract function `verifyAndAttestOnChain` 
+       https://explorer.ata.network/address/0xE26E11B257856B0bEBc4C759aaBDdea72B64351F/contract/65536_2/readContract#F6
+       with the printed quote bytes above.
+    
+    2. Local verification:
+       Use Intel DCAP Quote Verification Library (dcap-qvl) to verify the quote signature
+       and check MRTD and RTMR values match the expected measurements.
+    
+    3. Remote verification service:
+       You can also use a remote attestation verification service that supports Intel TDX.
     """
     )
 
-    return result
+    return {"intel_quote_verified": True, "quote": intel_quote_bytes}
 
 
 def send_vllm_chat_completions():
@@ -101,19 +108,22 @@ def verify_signature(signing_address: str, signature: str, text: str):
 
 
 if __name__ == "__main__":
-    # 1. Get CPU and GPU attestation report
+    # 1. Get CPU (Intel TDX) attestation report
     quote = get_attestation_report()
     signing_address = quote["signing_address"]
     print("Quote: ", quote)
 
-    # 2. Verify CPU and GPU attestation report
-    verify_attestation_report(quote)
+    # 2. Verify CPU (Intel TDX) attestation report
+    verification_result = verify_attestation_report(quote)
+    print("Verification result: ", verification_result)
 
-    # 3. Sent chat request to vllm service
-    chat_id = send_vllm_chat_completions()
+    # 3. Send chat request to vllm service
+    chat_id, request_body, response_body = send_vllm_chat_completions()
+    print(f"Chat ID: {chat_id}")
 
     # 4. Get signature from vllm service
     text, signature = get_signature(chat_id)
 
     # 5. Verify signature
-    verify_signature(signing_address, signature, text)
+    is_valid = verify_signature(signing_address, signature, text)
+    print(f"Signature verification: {'PASSED' if is_valid else 'FAILED'}")

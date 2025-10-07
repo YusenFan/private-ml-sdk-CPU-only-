@@ -1,18 +1,21 @@
 import web3
 import eth_utils
-import base64, json
-import eth_account
+import base64
 import json
+import eth_account
 
 from dstack_sdk import TappdClient
-from verifier import cc_admin
 
 
 class Quote:
+    """
+    CPU-only attestation using Intel TDX.
+    This class generates Intel TDX quotes for attestation without GPU involvement.
+    """
     def __init__(self):
         self.signing_address = None
         self.intel_quote = None
-        self.nvidia_payload = None
+        self.event_log = None
         self.raw_acct = None
 
     def init(self):
@@ -23,22 +26,17 @@ class Quote:
             pub_keccak = eth_utils.keccak(
                 self.raw_acct._key_obj.public_key.to_bytes()
             ).hex()
-            gpu_evidence = cc_admin.collect_gpu_evidence(pub_keccak)[0]
 
             self.intel_quote = self.get_quote(pub_keccak)
-            self.nvidia_payload = self.build_payload(
-                pub_keccak,
-                gpu_evidence["attestationReportHexStr"],
-                gpu_evidence["certChainBase64Encoded"],
-            )
 
         return dict(
             intel_quote=self.intel_quote,
-            nvidia_payload=self.nvidia_payload,
+            event_log=self.event_log,
             signing_address=self.signing_address,
         )
 
     def get_quote(self, pub_keccak: str):
+        """Get Intel TDX quote from the TEE"""
         # Initialize the client
         client = TappdClient()
 
@@ -46,25 +44,18 @@ class Quote:
         result = client.tdx_quote(pub_keccak)
         quote = bytes.fromhex(result.quote)
         self.intel_quote = base64.b64encode(quote).decode("utf-8")
+        
+        # Store event log if available
+        if hasattr(result, 'event_log'):
+            self.event_log = json.loads(result.event_log) if isinstance(result.event_log, str) else result.event_log
+        
         return result.quote
 
     def sign(self, content: str):
+        """Sign content using ECDSA"""
         return self.raw_acct.sign_message(
             eth_account.messages.encode_defunct(text=content)
         ).signature.hex()
-
-    def build_payload(self, nonce, evidence, cert_chain):
-        data = dict()
-        data["nonce"] = nonce
-        data["arch"] = "HOPPER"
-        encoded_evidence_bytes = evidence.encode("ascii")
-        encoded_evidence = base64.b64encode(encoded_evidence_bytes)
-        encoded_evidence = encoded_evidence.decode("utf-8")
-        data["evidence_list"] = [
-            {"evidence": encoded_evidence, "certificate": str(cert_chain)}
-        ]
-        payload = json.dumps(data)
-        return payload
 
 
 quote = Quote()
@@ -74,6 +65,7 @@ if __name__ == "__main__":
     print(
         dict(
             intel_quote=quote.intel_quote,
-            nvidia_payload=quote.nvidia_payload,
+            event_log=quote.event_log,
+            signing_address=quote.signing_address,
         )
     )

@@ -5,10 +5,7 @@ x-common: &common-config
     options:
       max-size: "100m"
       max-file: "5"
-  runtime: nvidia
-  environment:
-    - NVIDIA_VISIBLE_DEVICES=all
-    - TOKEN=<YOUR_TOKEN>
+
 
 services:
   vllm-proxy:
