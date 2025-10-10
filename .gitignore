@@ -11,3 +11,4 @@ target/
 /images
 /.venv
 sync.sh
+*.mdc
